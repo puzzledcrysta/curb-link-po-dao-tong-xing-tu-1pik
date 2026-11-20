@@ -44,6 +44,24 @@ class Paired(Source):
         return input_bytes(self.book, self.book_base64, SAMPLE_ROOT/'external.csv')
 
 
+class Book(BaseModel):
+    book: CsvText | None = None
+    book_base64: EncodedCsv | None = None
+
+    def ledger(self):
+        return input_bytes(self.book, self.book_base64, SAMPLE_ROOT/'external.csv')
+
+
+class OptionalBook(BaseModel):
+    book: CsvText | None = None
+    book_base64: EncodedCsv | None = None
+
+    def ledger(self):
+        if self.book is None and self.book_base64 is None:
+            return None
+        return input_bytes(self.book, self.book_base64, SAMPLE_ROOT/'external.csv')
+
+
 class Review(BaseModel):
     version: int = Field(ge=0)
     decision: Literal['确认','退回']

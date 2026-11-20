@@ -12,4 +12,4 @@ ROLE = '街道无障碍巡检员'
 UNIT = '米'
 RULE_VERSION = 'curb-link-1.0'
 SIGNATURE = '可通行路段'
-TABS = {'intake': '踏勘上传', 'contract': '路网字段', 'quality': '不可用踏勘', 'domain': '通行选路', 'reconcile': '里程对读', 'runs': '踏勘档次', 'review': '巡检交付'}
+TABS = {'intake': '踏勘上传', 'contract': '路网字段', 'quality': '不可用踏勘', 'domain': '通行选路', 'reconcile': '里程对读', 'settlement': '对账结算', 'runs': '踏勘档次', 'review': '巡检交付'}

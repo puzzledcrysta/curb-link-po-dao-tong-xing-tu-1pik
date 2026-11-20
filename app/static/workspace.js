@@ -15,6 +15,8 @@ let inputs = {};
 let reviewVersion = 0;
 let renderEpoch = 0;
 let activeView = null;
+let settlementId = null;
+let settleMemo = null;
 const filter = byId('filter');
 const differences = byId('differences');
 
@@ -24,7 +26,8 @@ function filterTable() {
   const query = filter.value.trim().toLocaleLowerCase();
   const selected = rows.filter(row => {
     if (stage === 'reconcile' && differences.checked && row.code === 'MATCH') return false;
-    return !query || [row.key,row.id,row.line,row.code,settings.reasons[row.code],row.detail,row.note,row.kind]
+    if (stage === 'settlement' && differences.checked && row.state === '已结') return false;
+    return !query || [row.key,row.id,row.line,row.code,settings.reasons[row.code],row.detail,row.note,row.kind,row.state]
       .some(value => String(value ?? '').toLocaleLowerCase().includes(query));
   });
   byId('shown').textContent = `${selected.length} / ${rows.length}`;
@@ -41,6 +44,29 @@ function notice(message, error = false) {
 
 function tag(code) {
   return el('span', settings.reasons[code] || code, code === 'MATCH' ? 'state' : 'state problem');
+}
+
+function state(label) {
+  return el('span', label, label === '已结' ? 'state' : 'state problem');
+}
+
+function settlementColumns() {
+  return [[settings.key, 'key'],
+    ['复算里程', 'amount', 'num'], ['外部账', 'reference', 'num'], ['差值', 'delta', 'num'],
+    ['外部行', 'reference_line', 'num'], ['状态', row => state(row.state)],
+    ['结论', row => tag(row.code)],
+    ['凭据', row => evidence('外部凭据', (row.evidence || []).map(item => `第 ${item.line} 行 · ${item.value} 米`))]];
+}
+
+function drawSettlementSummary(report) {
+  const summary = byId('settlement-summary');
+  summary.hidden = false;
+  summary.classList.toggle('problem', report.counts.pending > 0);
+  summary.replaceChildren(
+    el('strong', `已结 ${report.counts.settled} / ${report.counts.approved}`),
+    el('span', `欠凭据 ${report.counts.pending} 条${report.counts.disputed ? `（重报待核 ${report.counts.disputed} 条）` : ''}`),
+    el('span', `净差 ${report.totals.delta} 米`),
+    el('span', `外部凭据 ${report.attempts.length} 批`));
 }
 
 
@@ -76,6 +102,8 @@ function inspect(row) {
 
 function setRun(report) {
   result = report;
+  settlementId = report.manifest.batch_id || null;
+  settleMemo = null;
   byId('created').textContent = `${report.manifest.created.slice(0, 19).replace('T', ' ')} UTC`;
   showEvidence(report.accepted[0]);
   const id = result.manifest.run_id;
@@ -93,11 +121,38 @@ async function render() {
   const stage = selected;
   byId('phase').textContent = settings.tabs[stage];
   byId('review').hidden = true;
+  byId('supplement').hidden = true;
+  byId('settlement-summary').hidden = true;
+  byId('settlement-export').hidden = true;
   for (const link of links) {
     if (link.dataset.module === stage) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  if (!result) return;
+  if (!result) {
+    if (stage !== 'settlement') return;
+    byId('supplement').hidden = false;
+    byId('tools').hidden = false;
+    byId('only-differences').hidden = true;
+    if (!settleMemo) {
+      byId('settlement-summary').hidden = false;
+      byId('settlement-summary').replaceChildren(el('strong', '本班尚未结算'),
+        el('span', '填写外部账后点击「结算本班」'));
+      byId('settlement-summary').classList.remove('problem');
+      activeView = {stage, columns: [[settings.key, 'key'], ['状态', () => state('未结算')]], rows: []};
+      filterTable();
+      return;
+    }
+    const report = settleMemo;
+    settlementId = report.batch.batch_id;
+    if (ticket === renderEpoch) drawSettlementSummary(report);
+    const settleView = settlementColumns();
+    activeView = {stage, columns: settleView, rows: report.rows};
+    filterTable();
+    const link = byId('settlement-export');
+    link.hidden = false;
+    link.href = `/api/settlements/${report.batch.batch_id}/export`;
+    return;
+  }
   const id = result.manifest.run_id;
   const raw = row => evidence('来源字段', row.raw);
   const key = [settings.key, 'key'];
@@ -113,6 +168,37 @@ async function render() {
     } else if (stage === 'reconcile') {
       view = [key, ['实际', 'amount', 'num'], ['外部账', 'reference', 'num'], ['差值', 'delta', 'num'], ['外部行', 'book_line', 'num'], ['结论', row => tag(row.code)]];
       rows = [...result.book.rows].sort((a,b) => Number(a.code === 'MATCH') - Number(b.code === 'MATCH'));
+    } else if (stage === 'settlement') {
+      const batchId = result.manifest.batch_id;
+      settlementId = batchId;
+      let report = null;
+      try {
+        report = await query(`/api/settlements/${batchId}`);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+      view = settlementColumns();
+      if (!report) {
+        settleMemo = null;
+        rows = result.accepted.map(row => ({...row, state: '未结算', code: null, evidence: []}));
+        if (ticket === renderEpoch) {
+          const summary = byId('settlement-summary');
+          summary.hidden = false;
+          summary.classList.remove('problem');
+          summary.replaceChildren(el('strong', '本班尚未结算'),
+            el('span', `已核准 ${result.accepted.length} 条待结`));
+        }
+      } else {
+        settleMemo = report;
+        rows = report.rows;
+        if (ticket === renderEpoch) drawSettlementSummary(report);
+      }
+      byId('supplement').hidden = false;
+      if (ticket === renderEpoch && settleMemo) {
+        const link = byId('settlement-export');
+        link.hidden = false;
+        link.href = `/api/settlements/${settleMemo.batch.batch_id}/export`;
+      }
     } else if (stage === 'intake') {
       const intake = await query('/api/intake', inputs);
       view = [line, ['分类', 'kind'], ['字段', raw]];
@@ -163,7 +249,7 @@ async function render() {
       if (activeView?.stage !== stage) filter.value = '';
       activeView = {stage, columns: view, rows};
       byId('tools').hidden = false;
-      byId('only-differences').hidden = stage !== 'reconcile';
+      byId('only-differences').hidden = !['reconcile', 'settlement'].includes(stage);
       filterTable();
     }
   } catch (error) {
@@ -210,13 +296,7 @@ for (const name of ['source','book']) {
 }
 byId('source').addEventListener('submit', async event => {
   event.preventDefault();
-  const candidate = {};
-  for (const [control,name] of [['source','data'],['book','book']]) {
-    const text = byId(`${control}-csv`).value;
-    const original = uploaded.get(control);
-    if (original && text === original.text) candidate[`${name}_base64`] = encodeInput(original.bytes);
-    else if (text.length || original) candidate[name] = text;
-  }
+  const candidate = collectInputs();
   action.disabled = true;
   ++renderEpoch;
   notice('计算中');
@@ -244,3 +324,76 @@ byId('review').addEventListener('submit', async event => {
   }
 });
 render();
+
+function collectInputs() {
+  const candidate = {};
+  for (const [control,name] of [['source','data'],['book','book']]) {
+    const text = byId(`${control}-csv`).value;
+    const original = uploaded.get(control);
+    if (original && text === original.text) candidate[`${name}_base64`] = encodeInput(original.bytes);
+    else if (text.length || original) candidate[name] = text;
+  }
+  return candidate;
+}
+
+function supplementInputs() {
+  const text = byId('supplement-csv').value;
+  const original = uploaded.get('supplement');
+  if (original && text === original.text) return {book_base64: encodeInput(original.bytes)};
+  if (!text.length) return {};
+  return {book: text};
+}
+
+byId('supplement-file').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const [text,bytes] = await readInput(file);
+    byId('supplement-csv').value = text;
+    uploaded.set('supplement',{text:byId('supplement-csv').value,bytes});
+    notice(`已读取补交 ${file.name}`);
+  } catch (error) {
+    event.target.value = '';
+    notice(error.message, true);
+  }
+});
+
+byId('settle').addEventListener('click', async () => {
+  const button = byId('settle');
+  button.disabled = true;
+  notice('结算中');
+  try {
+    const hasSource = byId('source-csv').value.length > 0;
+    let report;
+    if (hasSource) {
+      report = await query('/api/settlements', collectInputs());
+    } else if (result) {
+      report = await query(`/api/settlements/from-run/${result.manifest.run_id}`, {});
+    } else {
+      throw Error('请先载入来源文件');
+    }
+    settleMemo = report;
+    settlementId = report.batch.batch_id;
+    const note = report.outcome.new_attempt ? `新结 ${report.outcome.posted} 条` : '同一批重试，未重复记账';
+    notice(`结算完成：${note}，欠凭据 ${report.counts.pending} 条`);
+    await render();
+  } catch (error) { notice(error.message, true); }
+  finally { button.disabled = false; }
+});
+
+byId('supplement').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!settlementId && !settleMemo) {
+    notice('请先结算本班', true);
+    return;
+  }
+  const id = settlementId || result.manifest.batch_id;
+  try {
+    const report = await query(`/api/settlements/${id}/supplement`, supplementInputs());
+    settleMemo = report;
+    settlementId = report.batch.batch_id;
+    const delta = report.outcome.new_attempt ? `新结 ${report.outcome.posted} 条` : '同一批重试，未重复记账';
+    notice(`补结完成：${delta}，仍欠凭据 ${report.counts.pending} 条`);
+    await render();
+  } catch (error) { notice(error.message, true); }
+});

@@ -53,6 +53,14 @@
       <div id="tools" class="filters" hidden><label>筛选 <input id="filter" type="search" placeholder="踏勘单 / 原因" maxlength="80"></label>
         <label id="only-differences" hidden><input id="differences" type="checkbox"> 只看差异</label><output id="shown"></output></div>
       <div class="scroll" id="grid-data"><p class="empty">运行本班样例</p></div>
+      <div id="settlement-summary" class="settlement-summary" hidden aria-live="polite"></div>
+      <form id="supplement" class="panel__body" hidden>
+        <label>补交外部账 <textarea id="supplement-csv" aria-label="补交外部账 CSV" rows="3" placeholder="踏勘单,外部记录值(米)"></textarea></label>
+        <label>或选择文件 <input id="supplement-file" type="file" accept=".csv,text/csv"></label>
+        <div class="actions"><button class="btn btn--primary" type="button" id="settle">结算本班</button>
+        <button class="btn" type="submit">补交外部账并补结</button>
+        <a class="btn" id="settlement-export" hidden>导出结算证据</a></div>
+      </form>
       <form id="review" class="panel__body" hidden>
         <label>复核意见 <textarea id="review-note" maxlength="500" rows="2"></textarea></label>
         <div class="actions"><label>结论 <select id="decision"><option>确认</option><option>退回</option></select></label>

@@ -12,3 +12,4 @@ REASONS = {
 }
 
 REASONS.update({'ROAD_FORMAT': '道路字段格式', 'ROAD_CONFLICT': '路段定义冲突', 'ROAD_UNREACHABLE': '无可通行路径', 'DATE': '日期格式无效', 'REV_BLOCKED': '较新来源尚未采信'})
+REASONS.update({'SETTLEMENT_UNKNOWN': '没有此结算批次'})

@@ -130,3 +130,8 @@ td details { min-width: 5em; margin-top: 4px; color: var(--muted); border-left: 
   .scroll, #signal { overflow: visible; max-height: none; }
   thead { display: table-header-group; }
 }
+.settlement-summary { display: flex; flex-wrap: wrap; gap: 7px 16px; align-items: baseline; padding: 10px var(--pad); border-block: 1px solid var(--line); background: color-mix(in srgb, var(--line), transparent 82%); color: var(--muted); font-size: 12px; }
+.settlement-summary strong { color: var(--ink); font-size: 14px; }
+.settlement-summary.problem strong { color: var(--bad); }
+#supplement { border-top: 1px solid var(--line); }
+#supplement label { display: block; margin-block: 9px 4px; }

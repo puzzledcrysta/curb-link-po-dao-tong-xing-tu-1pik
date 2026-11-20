@@ -13,6 +13,7 @@
 | M3 不可用踏勘 | 定位重复、被替代与矛盾来源 | `POST /api/quality` | `app/modules/quality/versions.py` | `tests/test_quality.py` |
 | M4 通行选路 | 按规则复算并追溯证据 | `POST /api/domain` | `app/modules/domain/rule.py` | `tests/test_domain.py` |
 | M5 里程对读 | 核对独立清单和各类差异 | `POST /api/reconcile` | `app/modules/reconcile/service.py` | `tests/test_reconcile.py` |
+| M5b 对账结算 | 结清已核准里程、补交外部账并补结 | `POST /api/settlements` | `app/modules/settlement/service.py` | `tests/test_settlement.py` |
 | M6 踏勘档次 | 打开历史批次并对原文件复跑 | `POST /api/runs` | `app/modules/runs/service.py` | `tests/test_runs.py` |
 | M7 巡检交付 | 登记复核结论并下载证据 | `POST /api/review/{run_id}` | `app/modules/review/decisions.py` | `tests/test_review.py` |
 
@@ -39,3 +40,17 @@
 ## 对账
 
 输入 = 计入 + 隔离 + 重传及版本替换 + 空白记录 + 重复表头。按业务键全外连接，缺失一侧与数值为零分别登记。逐笔差值与总差一致。
+
+## 对账结算
+
+结算只针对已核准（复算通过）的踏勘单，按来源文件内容分批，不依赖外部账即可结清其他单。
+
+| 场景 | 处理 | 测试 |
+|---|---|---|
+| 外部账缺该键 | 该单「欠凭据」，`MISSING_BOOK`，其余照常结清 | `test_settlement.py::test_settles_approved_mileage_without_waiting_for_disputes` |
+| 同一键报两个不同数 | 该单「欠凭据」，`BOOK_CONFLICT`，两个数都不记账，整批不中断 | `test_settlement.py::test_duplicate_numbers_are_disputed_not_posted` |
+| 同一键重复但数值相同 | 视为一致，可结清 | `test_settlement.py::test_duplicate_same_value_is_agreement` |
+| 补交外部账 | 对争议单重新解析，核清即补结 | `test_settlement.py::test_supplement_clarifies_dispute` |
+| 重试同一批补结 | 按（批次, 外部账摘要）去重，不重复记账 | `test_settlement.py::test_supplement_retry_is_idempotent` |
+| 已结单遇新外部账 | 保留原已结里程与凭据，不覆盖 | `test_settlement.py::test_already_settled_row_not_reposted_by_later_book` |
+| 外部账含未核准键 | 列入「待核」，不结算 | `test_settlement.py::test_book_key_without_approved_result_is_unapplied` |
